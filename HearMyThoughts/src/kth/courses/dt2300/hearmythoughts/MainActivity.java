@@ -24,6 +24,7 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Display;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -34,20 +35,26 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
-public class MainActivity extends Activity implements Runnable,
-		SensorEventListener, OnClickListener {
+public class MainActivity extends Activity implements SensorEventListener,
+		OnClickListener {
 
 	final float SMALLEST_POSITIVE_FLOAT = 0.000001f;
 	final float MIN_FLOAT = -1000.0f;
 	final float MAX_FLOAT = 1000000.0f;
-	
+
 	int width, height;
 
-	OSCPortOut port;
 	float x, y;
+	float ang;
+	float vx, vy, vres; // x, y and resulting velocity
+	float vang; // angular velocity
+	float ax, ay, ares; // x, y and resulting acceleration
+	float aang; // angular acceleration
+	long lastPosUpdate;
+
 	boolean touch = false;
 	boolean recording = false;
-	
+
 	PureDataHandler pdHandler;
 
 	private SensorManager senSensorManager;
@@ -55,9 +62,58 @@ public class MainActivity extends Activity implements Runnable,
 	private long lastUpdate = 0;
 	private float last_x, last_y, last_z;
 	private static final int SHAKE_THRESHOLD = 600;
-	
+
 	ScreenCanvas canvas;
 	Button button;
+
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+
+		setContentView(R.layout.activity_main);
+
+		FrameLayout container = (FrameLayout) findViewById(R.id.container);
+		canvas = new ScreenCanvas(this);
+		container.addView(canvas);
+
+		button = (Button) findViewById(R.id.record_button);
+		button.setBackgroundColor(Color.WHITE);
+		button.setOnClickListener(this);
+
+		Display display = getWindowManager().getDefaultDisplay();
+		Point size = new Point();
+		display.getSize(size);
+		width = size.x;
+		height = size.y;
+
+		pdHandler = new PureDataHandler(this);
+		pdHandler.addReadyListener(new PureDataHandler.ReadyListener() {
+			@Override
+			public void ready() {
+				Patch patch = pdHandler.createPatch(R.raw.test);
+				patch.open();
+				pdHandler.startAudio();
+				
+				// init the pd sends
+				PdBase.sendFloat("touch", 0);
+				PdBase.sendFloat("x", 0);
+				PdBase.sendFloat("y", 0);
+				PdBase.sendFloat("vel", 0);
+				PdBase.sendFloat("acc", 0);
+				PdBase.sendFloat("ang_vel", 0);
+				PdBase.sendFloat("ang_acc", 0);
+			}
+		});
+
+		// setup sensors
+		senSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+		senAccelerometer = senSensorManager
+				.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+		senSensorManager.registerListener(this, senAccelerometer,
+				SensorManager.SENSOR_DELAY_NORMAL);
+
+		lastPosUpdate = System.currentTimeMillis();
+	}
 
 	public void onAccuracyChanged(Sensor sensor, int accuracy) {
 
@@ -96,147 +152,100 @@ public class MainActivity extends Activity implements Runnable,
 	}
 
 	@Override
-	protected void onCreate(Bundle savedInstanceState) {
-		super.onCreate(savedInstanceState);
-		
-		setContentView(R.layout.activity_main);
-		
-		FrameLayout container = (FrameLayout) findViewById(R.id.container);
-		canvas = new ScreenCanvas(this);
-		container.addView(canvas);
-		
-		button = (Button) findViewById(R.id.record_button);
-		button.setBackgroundColor(Color.WHITE);
-		button.setOnClickListener(this);
-		
-		Display display = getWindowManager().getDefaultDisplay();
-		Point size = new Point();
-		display.getSize(size);
-		width = size.x;
-		height = size.y;
-		
-		pdHandler = new PureDataHandler(this);
-		pdHandler.addReadyListener(new PureDataHandler.ReadyListener() {
-			@Override
-			public void ready() {
-				Patch patch = pdHandler.createPatch(R.raw.test);
-				patch.open();
-				pdHandler.startAudio();
-			}
-		});
-
-		// setup sensors
-		senSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-		senAccelerometer = senSensorManager
-				.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-		senSensorManager.registerListener(this, senAccelerometer,
-				SensorManager.SENSOR_DELAY_NORMAL);
-
-		// setup port
-		port = null;
-		InetAddress ip = null;
-		try {
-			ip = InetAddress.getByName("192.168.0.16");
-		} catch (UnknownHostException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		try {
-			port = new OSCPortOut(ip, 9000);
-		} catch (SocketException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-
-		new Thread(this).start();
-	}
-
-	@Override
-	public void run() {
-		while (true) {
-			if (port != null) {
-				try {
-					Collection<Object> arguments;
-					OSCMessage msg;
-					// send touch events
-					if (touch) {
-						arguments = new ArrayList<Object>();
-						arguments.add(x);
-						arguments.add(y);
-						msg = new OSCMessage("/touch", arguments);
-						port.send(msg);
-					}
-					// send accelerometer data
-					// arguments.add(getValidFloat(last_x));
-					// arguments.add(getValidFloat(last_y));
-					// arguments.add(getValidFloat(last_z));
-					msg = new OSCMessage("/acc/x");// , arguments);
-					arguments = new ArrayList<Object>();
-					msg.addArgument(new Float(last_x));
-					port.send(msg);
-					msg = new OSCMessage("/acc/y");
-					arguments = new ArrayList<Object>();
-					msg.addArgument(new Float(last_y));
-					port.send(msg);
-					msg = new OSCMessage("/acc/z");
-					arguments = new ArrayList<Object>();
-					msg.addArgument(new Float(last_z));
-					port.send(msg);
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
-
-			try {
-				Thread.sleep(10);
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-	}
-
-	@Override
 	public boolean onTouchEvent(MotionEvent event) {
+		float _x = -1, _y = -1;
+
 		switch (event.getAction()) {
 		case MotionEvent.ACTION_DOWN:
 		case MotionEvent.ACTION_MOVE:
 			touch = true;
-			x = event.getX();
-			y = event.getY();
+			_x = event.getX();
+			_y = event.getY();
 			canvas.setXY(x, y);
-			PdBase.sendFloat("x", x/width);
-			PdBase.sendFloat("y", y/height);
+			//PdBase.sendFloat("x", x / width);
+			//PdBase.sendFloat("y", y / height);
+			PdBase.sendFloat("touch", 1);
 			break;
 		case MotionEvent.ACTION_UP:
-			x = 0;
-			y = 0;
 			touch = false;
-			canvas.setXY(x, y);
+			canvas.setXY(0, 0);
 			// TODO: add a sound off/on
-			PdBase.sendFloat("x", 0);
-			PdBase.sendFloat("y", 0);
+			//PdBase.sendFloat("x", 0);
+			//PdBase.sendFloat("y", 0);
+			PdBase.sendFloat("touch", 0);
 			break;
 		}
-		return false;
-	}
 
-	private Float getValidFloat(float f) {
-		Float _f = new Float(f);
-		if (_f < MIN_FLOAT) {
-			_f = MIN_FLOAT;
-		} else if (_f > MAX_FLOAT) {
-			_f = MAX_FLOAT;
+		if (_x != -1) {
+			float t = (System.currentTimeMillis() - lastPosUpdate);
+
+			float dx = _x - x;
+			float dy = _y - y;
+			float h = (float) Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
+
+			float _ang = ang; 
+			ang = (float) Math.asin(dy / h);
+			if (dy >= 0 && dx < 0) {
+				ang = (float) Math.PI - ang;
+			} else if (dy <= 0) {
+				if (dx < 0) {
+					ang = (float) Math.PI - ang;
+				} else {
+					ang = (float) Math.PI * 2 + ang;
+				}
+			}
+			ang *= 180 / Math.PI;
+
+			float _vang = vang;
+
+			float dang = ang - _ang;
+			if (dang > Math.PI) {
+				dang -= Math.PI * 2;
+			}
+			ang = _ang + dang;
+			
+			vang = dang / t;
+
+			aang = (vang - _vang) / t;
+
+			//Log.v("ang", "aang: " + aang + " vang: " + vang + " ang: " + _ang);
+
+			float _vx = vx;
+			float _vy = vy;
+
+			vx = dx / t;
+			vy = dy / t;
+			vres = (float) Math.sqrt(Math.pow(vx, 2) + Math.pow(vy, 2));
+
+			ax = (vx - _vx) / t;
+			ay = (vy - _vy) / t;
+			ares = (float) Math.sqrt(Math.pow(ax, 2) + Math.pow(ay, 2));
+
+			canvas.setDebugValues(new float[] { 0.5f + aang,
+					0.5f + vang / 10, _ang / 360, ares,vres/5, h/100 });
+			
+			// update old variables
+			x = _x;
+			y = _y;
+			//ang = _ang;
+			
+			// send to pd
+			PdBase.sendFloat("x", x);
+			PdBase.sendFloat("y", y);
+			PdBase.sendFloat("vel", vres);
+			PdBase.sendFloat("acc", ares);
+			PdBase.sendFloat("ang_vel", vang);
+			PdBase.sendFloat("ang_acc", aang);
+
+			lastPosUpdate = System.currentTimeMillis();
 		}
-		if (_f > 0.0f && _f < SMALLEST_POSITIVE_FLOAT) {
-			_f = SMALLEST_POSITIVE_FLOAT;
-		}
-		return _f;
+
+		return false;
 	}
 
 	@Override
 	public void onClick(View v) {
-		switch(v.getId()) {
+		switch (v.getId()) {
 		case R.id.record_button:
 			Button button = (Button) v;
 			if (recording) {
