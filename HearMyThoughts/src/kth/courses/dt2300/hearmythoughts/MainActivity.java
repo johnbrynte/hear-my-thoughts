@@ -38,10 +38,6 @@ import android.widget.LinearLayout;
 public class MainActivity extends Activity implements SensorEventListener,
 		OnClickListener {
 
-	final float SMALLEST_POSITIVE_FLOAT = 0.000001f;
-	final float MIN_FLOAT = -1000.0f;
-	final float MAX_FLOAT = 1000000.0f;
-
 	int width, height;
 
 	float x, y;
@@ -209,6 +205,15 @@ public class MainActivity extends Activity implements SensorEventListener,
 			aang = (vang - _vang) / t;
 
 			//Log.v("ang", "aang: " + aang + " vang: " + vang + " ang: " + _ang);
+			if (h > 5 && Math.abs(vang) > 2) {
+				//Log.v("ang", "angular velocity: " + vang + " h: " + h + " t: " + t);
+				PdBase.sendBang("ang_vel_high");
+			}
+			
+			if (Math.abs(vres) > 3) {
+				Log.v("dt2300", "vres: " + vres);
+				//PdBase.sendBang("ang_vel_high");
+			}
 
 			float _vx = vx;
 			float _vy = vy;
