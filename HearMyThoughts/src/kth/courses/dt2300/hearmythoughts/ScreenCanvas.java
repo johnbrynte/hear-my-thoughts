@@ -23,6 +23,7 @@ public class ScreenCanvas extends View implements Runnable {
 	float[] debug;
 
 	int color;
+	int background;
 	Paint paint;
 
 	public ScreenCanvas(Context context) {
@@ -40,6 +41,7 @@ public class ScreenCanvas extends View implements Runnable {
 		}
 		
 		setColor(255, 255, 255);
+		background = Color.GRAY;
 		
 		new Thread(this).start();
 	}
@@ -54,13 +56,17 @@ public class ScreenCanvas extends View implements Runnable {
 		//invalidate();
 	}
 	
+	public void setBackgroundColor(int r, int g, int b) {
+		background = Color.rgb(r, g, b);
+	}
+	
 	public void setColor(int r, int g, int b) {
 		color = Color.rgb(r, g, b);
 	}
 
 	@Override
 	public void onDraw(Canvas c) {
-		c.drawColor(Color.GRAY);
+		c.drawColor(background);
 
 		Float[] p;
 		float r;

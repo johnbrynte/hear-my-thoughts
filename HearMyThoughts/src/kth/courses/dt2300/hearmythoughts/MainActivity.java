@@ -6,6 +6,8 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
 
 import org.puredata.core.PdBase;
 
@@ -36,8 +38,15 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
 public class MainActivity extends Activity implements SensorEventListener,
-		OnClickListener {
+		OnClickListener, Runnable {
 
+	final float V_BLEED = 0.3f; // overlap between different emotions
+	final float V_SAD = 0.02f;
+	final float V_HAPPY = 0.4f;
+	final float V_ANGRY = 0.9f;
+	
+	Patch patch;
+	
 	int width, height;
 
 	float x, y;
@@ -47,6 +56,13 @@ public class MainActivity extends Activity implements SensorEventListener,
 	float ax, ay, ares; // x, y and resulting acceleration
 	float aang; // angular acceleration
 	long lastPosUpdate;
+	
+	RMS vresRMS = new RMS(30);
+	RMS vangRMS = new RMS(20);
+	
+	LinkedList<Float> vangAverage = new LinkedList<Float>();
+	LinkedList<Float> vang_bps_avg = new LinkedList<Float>();
+	long vangLastBang;
 
 	boolean touch = false;
 	boolean recording = false;
@@ -55,9 +71,6 @@ public class MainActivity extends Activity implements SensorEventListener,
 
 	private SensorManager senSensorManager;
 	private Sensor senAccelerometer;
-	private long lastUpdate = 0;
-	private float last_x, last_y, last_z;
-	private static final int SHAKE_THRESHOLD = 600;
 
 	ScreenCanvas canvas;
 	Button button;
@@ -65,6 +78,16 @@ public class MainActivity extends Activity implements SensorEventListener,
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		
+		// setup averages
+		for (int i = 0; i < 4; i++) {
+			vangAverage.add(0f);
+		}
+		for (int i = 0; i < 20; i++) {
+			vang_bps_avg.add(0f);
+		}
+		// setup bang timers
+		vangLastBang = System.currentTimeMillis();
 
 		setContentView(R.layout.activity_main);
 
@@ -75,6 +98,9 @@ public class MainActivity extends Activity implements SensorEventListener,
 		button = (Button) findViewById(R.id.record_button);
 		button.setBackgroundColor(Color.WHITE);
 		button.setOnClickListener(this);
+		
+		Button reloadButton = (Button) findViewById(R.id.reload_button);
+		reloadButton.setOnClickListener(this);
 
 		Display display = getWindowManager().getDefaultDisplay();
 		Point size = new Point();
@@ -86,7 +112,7 @@ public class MainActivity extends Activity implements SensorEventListener,
 		pdHandler.addReadyListener(new PureDataHandler.ReadyListener() {
 			@Override
 			public void ready() {
-				Patch patch = pdHandler.createPatch(R.raw.test);
+				patch = new Patch("mapping_1.pd");
 				patch.open();
 				pdHandler.startAudio();
 				
@@ -109,6 +135,8 @@ public class MainActivity extends Activity implements SensorEventListener,
 				SensorManager.SENSOR_DELAY_NORMAL);
 
 		lastPosUpdate = System.currentTimeMillis();
+		
+		new Thread(this).start();
 	}
 
 	public void onAccuracyChanged(Sensor sensor, int accuracy) {
@@ -124,27 +152,16 @@ public class MainActivity extends Activity implements SensorEventListener,
 			float x = event.values[0];
 			float y = event.values[1];
 			float z = event.values[2];
-
-			last_x = x;
-			last_y = y;
-			last_z = z;
-
-			/*
-			 * long curTime = System.currentTimeMillis();
-			 * 
-			 * if ((curTime - lastUpdate) > 100) { long diffTime = (curTime -
-			 * lastUpdate); lastUpdate = curTime;
-			 * 
-			 * float speed = Math.abs(x + y + z - last_x - last_y - last_z)/
-			 * diffTime * 10000;
-			 * 
-			 * if (speed > SHAKE_THRESHOLD) {
-			 * 
-			 * }
-			 * 
-			 * last_x = x; last_y = y; last_z = z; }
-			 */
 		}
+	}
+	
+	private float getListAverage(List<Float> list) {
+		float average = 0;
+		for (Float e : list) {
+			average += e;
+		}
+		average = average / list.size();
+		return average;
 	}
 
 	@Override
@@ -173,7 +190,8 @@ public class MainActivity extends Activity implements SensorEventListener,
 		}
 
 		if (_x != -1) {
-			float t = (System.currentTimeMillis() - lastPosUpdate);
+			long millis = System.currentTimeMillis();
+			float t = (millis - lastPosUpdate);
 
 			float dx = _x - x;
 			float dy = _y - y;
@@ -190,28 +208,23 @@ public class MainActivity extends Activity implements SensorEventListener,
 					ang = (float) Math.PI * 2 + ang;
 				}
 			}
-			ang *= 180 / Math.PI;
-
-			float _vang = vang;
+			//ang *= 180 / Math.PI;
 
 			float dang = ang - _ang;
 			if (dang > Math.PI) {
 				dang -= Math.PI * 2;
 			}
 			ang = _ang + dang;
-			
+			//Log.v("dt2300", "ang: " + ang);
+
+			float _vang = vang;
+			// calculate angular velocity
 			vang = dang / t;
 
 			aang = (vang - _vang) / t;
-
-			//Log.v("ang", "aang: " + aang + " vang: " + vang + " ang: " + _ang);
-			if (h > 5 && Math.abs(vang) > 2) {
-				//Log.v("ang", "angular velocity: " + vang + " h: " + h + " t: " + t);
-				PdBase.sendBang("ang_vel_high");
-			}
 			
 			if (Math.abs(vres) > 3) {
-				Log.v("dt2300", "vres: " + vres);
+				//Log.v("dt2300", "vres: " + vres);
 				//PdBase.sendBang("ang_vel_high");
 			}
 
@@ -225,9 +238,6 @@ public class MainActivity extends Activity implements SensorEventListener,
 			ax = (vx - _vx) / t;
 			ay = (vy - _vy) / t;
 			ares = (float) Math.sqrt(Math.pow(ax, 2) + Math.pow(ay, 2));
-
-			canvas.setDebugValues(new float[] { 0.5f + aang,
-					0.5f + vang / 10, _ang / 360, ares,vres/5, h/100 });
 			
 			// update old variables
 			x = _x;
@@ -242,7 +252,7 @@ public class MainActivity extends Activity implements SensorEventListener,
 			PdBase.sendFloat("ang_vel", vang);
 			PdBase.sendFloat("ang_acc", aang);
 
-			lastPosUpdate = System.currentTimeMillis();
+			lastPosUpdate = millis;
 		}
 
 		return false;
@@ -264,8 +274,85 @@ public class MainActivity extends Activity implements SensorEventListener,
 			}
 			recording = !recording;
 			break;
+		case R.id.reload_button:
+			patch.close();
+			patch.open();
+			break;
 		default:
 			break;
+		}
+	}
+
+	@Override
+	public void run() {
+		while(true) {
+			long millis = System.currentTimeMillis();
+			
+			// resulting velocity
+			vresRMS.add(touch ? vres : 0f);
+			float vres_rms = vresRMS.getRMS();
+			// scaling to get between 0 and 1
+			vres_rms = vres_rms / 6;
+			vres_rms = vres_rms > 1 ? 1 : vres_rms;
+			// distribute emotions
+			float sad = 0f;
+			float happy = 0f;
+			float angry = 0f;
+			if (vres_rms <= V_SAD) {
+				sad = 1 - (V_SAD - vres_rms) / V_SAD;
+			} else if (vres_rms <= V_HAPPY) {
+				sad = 1 - (vres_rms - V_SAD) / (V_HAPPY - V_SAD);
+				happy = 1 - (V_HAPPY - vres_rms) / (V_HAPPY - V_SAD);
+			} else if (vres_rms <= V_ANGRY){
+				happy = 1 - (vres_rms - V_HAPPY) / (V_ANGRY - V_HAPPY);
+				angry = 1 - (V_ANGRY - vres_rms) / (V_ANGRY - V_HAPPY);
+			} else {
+				angry = 1;// - (vres_rms - V_ANGRY) / (1 - V_ANGRY);
+			}
+			if (touch) {
+				canvas.setBackgroundColor((int)(155+100*angry), (int)(155+100*happy), (int)(155+100*sad));
+			} else {
+				canvas.setBackgroundColor(155, 155, 155);
+			}
+			
+			vangRMS.add(touch ? vang : 0f);
+			float vang_rms = vangRMS.getRMS();
+			
+			vangAverage.add(vang);
+			vangAverage.removeFirst();
+			float vang_avg = getListAverage(vangAverage);
+			
+			//Log.v("ang", "aang: " + aang + " vang: " + vang + " ang: " + _ang);
+			if (Math.abs(vang_rms) > 2) {
+				//vang_bps_avg.add(1000f / (millis - vangLastBang));
+				//vang_bps_avg.removeFirst();
+				Log.v("dt2300", "vang_rms: " + vang_rms);
+				vangLastBang = millis;
+				//PdBase.sendBang("ang_vel_high");
+			} else {
+				vang_bps_avg.add(0f);
+				vang_bps_avg.removeFirst();
+			}
+			
+			float vang_bps = getListAverage(vang_bps_avg);
+			
+			canvas.setDebugValues(new float[] { sad, happy, angry });
+			//Log.v("dt2300", "ang: " + ang + " vang_rms: " + vang_rms);
+			
+			float velocity = vres_rms;
+			//velocity = velocity > 1 ? 1 : velocity;
+			
+			PdBase.sendFloat("velocity", velocity);
+			PdBase.sendFloat("sad", sad);
+			PdBase.sendFloat("happy", happy);
+			PdBase.sendFloat("angry", angry);
+			
+			try {
+				Thread.sleep(10);
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
 	}
 }
