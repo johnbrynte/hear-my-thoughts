@@ -1,4 +1,4 @@
-#N canvas 0 0 1280 695 10;
+#N canvas 3 13 1280 695 10;
 #X obj 748 284 *~;
 #X obj 21 -118 vsl 15 64 0 1 0 0 empty empty empty 0 -9 0 10 -262144
 -1 -1 0 1;
@@ -96,6 +96,13 @@
 #X obj 262 -120 vsl 15 64 0 1 0 0 empty empty empty 0 -9 0 10 -262144
 -1 -1 0 1;
 #X obj 127 446 *~ 0.3;
+#X obj 730 472 writesf~ 1;
+#X msg 760 439 open recording.wav;
+#X obj 730 328 r record;
+#X obj 729 359 select start stop;
+#X msg 729 418 start;
+#X obj 728 390 t b b;
+#X msg 790 391 open;
 #X connect 0 0 11 1;
 #X connect 1 0 55 0;
 #X connect 2 0 1 0;
@@ -204,5 +211,14 @@
 #X connect 84 0 48 0;
 #X connect 85 0 12 0;
 #X connect 85 0 12 1;
+#X connect 85 0 88 0;
 #X connect 86 0 58 0;
 #X connect 87 0 85 0;
+#X connect 89 0 88 0;
+#X connect 90 0 91 0;
+#X connect 91 0 93 0;
+#X connect 91 1 94 0;
+#X connect 92 0 88 0;
+#X connect 93 0 92 0;
+#X connect 93 1 89 0;
+#X connect 94 0 88 0;

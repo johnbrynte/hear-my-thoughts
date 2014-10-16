@@ -92,12 +92,18 @@ public class ScreenCanvas extends View implements Runnable {
 		
 		/*
 		if (debug != null) {
-			int _x, width = 50, height = 200;
+			int _x, width = 100, height = 400;
 			for (int i = 0; i < debug.length; i++) {
 				_x = i*(width+4);
 				paint.setColor(Color.WHITE);
 				c.drawRect(_x, 0, _x+width, height, paint);
-				paint.setColor(Color.GREEN);
+				if (i == 0) {
+					paint.setColor(Color.rgb(100, 100, 255));
+				} else if(i == 1) {
+					paint.setColor(Color.rgb(100, 255, 100));
+				} else {
+					paint.setColor(Color.rgb(255, 100, 100));
+				}
 				c.drawRect(_x, height-debug[i]*height, _x+width, height, paint);
 			}
 		}
