@@ -1,5 +1,8 @@
 package kth.courses.dt2300.hearmythoughts;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.SocketException;
@@ -26,9 +29,11 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Log;
 import android.view.Display;
 import android.view.Menu;
+import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
@@ -44,9 +49,14 @@ public class MainActivity extends Activity implements SensorEventListener,
 	final float V_SAD = 0.02f;
 	final float V_HAPPY = 0.4f;
 	final float V_ANGRY = 0.9f;
-	
+
+	String outputDir = Environment.getExternalStorageDirectory()
+			+ "/puredata-records/";
+
 	Patch patch;
-	
+	File output;
+	BufferedWriter writer;
+
 	int width, height;
 
 	float x, y;
@@ -56,10 +66,10 @@ public class MainActivity extends Activity implements SensorEventListener,
 	float ax, ay, ares; // x, y and resulting acceleration
 	float aang; // angular acceleration
 	long lastPosUpdate;
-	
+
 	RMS vresRMS = new RMS(30);
 	RMS vangRMS = new RMS(20);
-	
+
 	LinkedList<Float> vangAverage = new LinkedList<Float>();
 	LinkedList<Float> vang_bps_avg = new LinkedList<Float>();
 	long vangLastBang;
@@ -74,11 +84,46 @@ public class MainActivity extends Activity implements SensorEventListener,
 
 	ScreenCanvas canvas;
 	Button button;
+	
+	boolean sound = false;
+
+	// Initiating Menu XML file (menu.xml)
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		MenuInflater menuInflater = getMenuInflater();
+		menuInflater.inflate(R.layout.menu, menu);
+		return true;
+	}
+
+	/**
+	 * Event Handling for Individual menu item selected Identify single menu
+	 * item by it's id
+	 * */
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		switch (item.getItemId()) {
+		case R.id.menu_sound:
+			if (pdHandler.ready()) {
+				sound = !sound;
+				if (sound) {
+					pdHandler.startAudio();
+				} else {
+					pdHandler.stopAudio();
+				}
+			}
+			break;
+		case R.id.menu_visuals:
+			canvas.toggleVisuals();
+			break;
+		}
+
+		return super.onOptionsItemSelected(item);
+	}
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
-		
+
 		// setup averages
 		for (int i = 0; i < 4; i++) {
 			vangAverage.add(0f);
@@ -98,9 +143,6 @@ public class MainActivity extends Activity implements SensorEventListener,
 		button = (Button) findViewById(R.id.record_button);
 		button.setBackgroundColor(Color.WHITE);
 		button.setOnClickListener(this);
-		
-		Button reloadButton = (Button) findViewById(R.id.reload_button);
-		reloadButton.setOnClickListener(this);
 
 		Display display = getWindowManager().getDefaultDisplay();
 		Point size = new Point();
@@ -114,8 +156,7 @@ public class MainActivity extends Activity implements SensorEventListener,
 			public void ready() {
 				patch = new Patch("mapping_1.pd");
 				patch.open();
-				pdHandler.startAudio();
-				
+
 				// init the pd sends
 				PdBase.sendFloat("touch", 0);
 				PdBase.sendFloat("x", 0);
@@ -135,7 +176,7 @@ public class MainActivity extends Activity implements SensorEventListener,
 				SensorManager.SENSOR_DELAY_NORMAL);
 
 		lastPosUpdate = System.currentTimeMillis();
-		
+
 		new Thread(this).start();
 	}
 
@@ -154,7 +195,7 @@ public class MainActivity extends Activity implements SensorEventListener,
 			float z = event.values[2];
 		}
 	}
-	
+
 	private float getListAverage(List<Float> list) {
 		float average = 0;
 		for (Float e : list) {
@@ -175,17 +216,26 @@ public class MainActivity extends Activity implements SensorEventListener,
 			_x = event.getX();
 			_y = event.getY();
 			canvas.setXY(x, y);
-			//PdBase.sendFloat("x", x / width);
-			//PdBase.sendFloat("y", y / height);
+			// PdBase.sendFloat("x", x / width);
+			// PdBase.sendFloat("y", y / height);
 			PdBase.sendFloat("touch", 1);
 			break;
 		case MotionEvent.ACTION_UP:
 			touch = false;
 			canvas.setXY(0, 0);
 			// TODO: add a sound off/on
-			//PdBase.sendFloat("x", 0);
-			//PdBase.sendFloat("y", 0);
+			// PdBase.sendFloat("x", 0);
+			// PdBase.sendFloat("y", 0);
 			PdBase.sendFloat("touch", 0);
+
+			try {
+				if (writer != null) {
+					writer.write("0:0,0\n");
+				}
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 			break;
 		}
 
@@ -197,7 +247,7 @@ public class MainActivity extends Activity implements SensorEventListener,
 			float dy = _y - y;
 			float h = (float) Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
 
-			float _ang = ang; 
+			float _ang = ang;
 			ang = (float) Math.asin(dy / h);
 			if (dy >= 0 && dx < 0) {
 				ang = (float) Math.PI - ang;
@@ -208,24 +258,24 @@ public class MainActivity extends Activity implements SensorEventListener,
 					ang = (float) Math.PI * 2 + ang;
 				}
 			}
-			//ang *= 180 / Math.PI;
+			// ang *= 180 / Math.PI;
 
 			float dang = ang - _ang;
 			if (dang > Math.PI) {
 				dang -= Math.PI * 2;
 			}
 			ang = _ang + dang;
-			//Log.v("dt2300", "ang: " + ang);
+			// Log.v("dt2300", "ang: " + ang);
 
 			float _vang = vang;
 			// calculate angular velocity
 			vang = dang / t;
 
 			aang = (vang - _vang) / t;
-			
+
 			if (Math.abs(vres) > 3) {
-				//Log.v("dt2300", "vres: " + vres);
-				//PdBase.sendBang("ang_vel_high");
+				// Log.v("dt2300", "vres: " + vres);
+				// PdBase.sendBang("ang_vel_high");
 			}
 
 			float _vx = vx;
@@ -238,12 +288,12 @@ public class MainActivity extends Activity implements SensorEventListener,
 			ax = (vx - _vx) / t;
 			ay = (vy - _vy) / t;
 			ares = (float) Math.sqrt(Math.pow(ax, 2) + Math.pow(ay, 2));
-			
+
 			// update old variables
 			x = _x;
 			y = _y;
-			//ang = _ang;
-			
+			// ang = _ang;
+
 			// send to pd
 			PdBase.sendFloat("x", x);
 			PdBase.sendFloat("y", y);
@@ -253,6 +303,15 @@ public class MainActivity extends Activity implements SensorEventListener,
 			PdBase.sendFloat("ang_acc", aang);
 
 			lastPosUpdate = millis;
+
+			try {
+				if (writer != null) {
+					writer.write(millis + ":" + x + "," + y + "\n");
+				}
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
 
 		return false;
@@ -267,16 +326,38 @@ public class MainActivity extends Activity implements SensorEventListener,
 				PdBase.sendSymbol("record", "stop");
 				button.setText(R.string.record_start);
 				button.setBackgroundColor(Color.WHITE);
+
+				if (writer != null) {
+					try {
+						writer.close();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
 			} else {
 				PdBase.sendSymbol("record", "start");
 				button.setText(R.string.record_stop);
 				button.setBackgroundColor(Color.RED);
+
+				output = new File(outputDir + System.currentTimeMillis()
+						+ ".txt");
+				try {
+					// if file doesnt exists, then create it
+					if (!output.exists()) {
+						output.createNewFile();
+
+					}
+					FileWriter fw = new FileWriter(output.getAbsoluteFile());
+					writer = new BufferedWriter(fw);
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+
+					writer = null;
+				}
 			}
 			recording = !recording;
-			break;
-		case R.id.reload_button:
-			patch.close();
-			patch.open();
 			break;
 		default:
 			break;
@@ -285,9 +366,9 @@ public class MainActivity extends Activity implements SensorEventListener,
 
 	@Override
 	public void run() {
-		while(true) {
+		while (true) {
 			long millis = System.currentTimeMillis();
-			
+
 			// resulting velocity
 			vresRMS.add(touch ? vres : 0f);
 			float vres_rms = vresRMS.getRMS();
@@ -303,50 +384,55 @@ public class MainActivity extends Activity implements SensorEventListener,
 			} else if (vres_rms <= V_HAPPY) {
 				sad = 1 - (vres_rms - V_SAD) / (V_HAPPY - V_SAD);
 				happy = 1 - (V_HAPPY - vres_rms) / (V_HAPPY - V_SAD);
-			} else if (vres_rms <= V_ANGRY){
+			} else if (vres_rms <= V_ANGRY) {
 				happy = 1 - (vres_rms - V_HAPPY) / (V_ANGRY - V_HAPPY);
 				angry = 1 - (V_ANGRY - vres_rms) / (V_ANGRY - V_HAPPY);
 			} else {
 				angry = 1;// - (vres_rms - V_ANGRY) / (1 - V_ANGRY);
 			}
 			if (touch) {
-				canvas.setBackgroundColor((int)(155+100*angry), (int)(155+100*happy), (int)(155+100*sad));
+				canvas.setBackgroundColor((int) (155 + 100 * angry),
+						(int) (155 + 100 * happy), (int) (155 + 100 * sad));
 			} else {
 				canvas.setBackgroundColor(155, 155, 155);
 			}
-			
+
 			vangRMS.add(touch ? vang : 0f);
 			float vang_rms = vangRMS.getRMS();
-			
+
 			vangAverage.add(vang);
 			vangAverage.removeFirst();
 			float vang_avg = getListAverage(vangAverage);
-			
-			//Log.v("ang", "aang: " + aang + " vang: " + vang + " ang: " + _ang);
+
+			// Log.v("ang", "aang: " + aang + " vang: " + vang + " ang: " +
+			// _ang);
 			if (Math.abs(vang_rms) > 2) {
-				//vang_bps_avg.add(1000f / (millis - vangLastBang));
-				//vang_bps_avg.removeFirst();
+				// vang_bps_avg.add(1000f / (millis - vangLastBang));
+				// vang_bps_avg.removeFirst();
 				Log.v("dt2300", "vang_rms: " + vang_rms);
 				vangLastBang = millis;
-				//PdBase.sendBang("ang_vel_high");
+				// PdBase.sendBang("ang_vel_high");
 			} else {
 				vang_bps_avg.add(0f);
 				vang_bps_avg.removeFirst();
 			}
-			
+
 			float vang_bps = getListAverage(vang_bps_avg);
-			
+
 			canvas.setDebugValues(new float[] { sad, happy, angry });
-			//Log.v("dt2300", "ang: " + ang + " vang_rms: " + vang_rms);
-			
+			// Log.v("dt2300", "ang: " + ang + " vang_rms: " + vang_rms);
+
 			float velocity = vres_rms;
-			//velocity = velocity > 1 ? 1 : velocity;
+			// velocity = velocity > 1 ? 1 : velocity;
 			
+			float volume = 0.2f + 0.8f*(1f - y / height);
+
 			PdBase.sendFloat("velocity", velocity);
 			PdBase.sendFloat("sad", sad);
 			PdBase.sendFloat("happy", happy);
 			PdBase.sendFloat("angry", angry);
-			
+			PdBase.sendFloat("volume", volume);
+
 			try {
 				Thread.sleep(10);
 			} catch (InterruptedException e) {

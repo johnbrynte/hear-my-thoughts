@@ -25,6 +25,8 @@ public class ScreenCanvas extends View implements Runnable {
 	int color;
 	int background;
 	Paint paint;
+	
+	boolean visuals = false;
 
 	public ScreenCanvas(Context context) {
 		super(context);
@@ -63,9 +65,18 @@ public class ScreenCanvas extends View implements Runnable {
 	public void setColor(int r, int g, int b) {
 		color = Color.rgb(r, g, b);
 	}
+	
+	public void toggleVisuals() {
+		visuals = !visuals;
+	}
 
 	@Override
 	public void onDraw(Canvas c) {
+		if (!visuals) {
+			c.drawColor(Color.BLACK);
+			return;
+		}
+		
 		c.drawColor(background);
 
 		Float[] p;
@@ -79,6 +90,7 @@ public class ScreenCanvas extends View implements Runnable {
 			}
 		}
 		
+		/*
 		if (debug != null) {
 			int _x, width = 50, height = 200;
 			for (int i = 0; i < debug.length; i++) {
@@ -89,6 +101,7 @@ public class ScreenCanvas extends View implements Runnable {
 				c.drawRect(_x, height-debug[i]*height, _x+width, height, paint);
 			}
 		}
+		*/
 		// paint.setColor(Color.WHITE);
 		// paint.setTextSize(20);
 		// c.drawText("0,0 is top left", 0, 0 + 20, paint);
