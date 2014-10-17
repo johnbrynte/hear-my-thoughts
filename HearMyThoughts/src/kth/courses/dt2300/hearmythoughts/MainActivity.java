@@ -67,7 +67,7 @@ public class MainActivity extends Activity implements SensorEventListener,
 	float aang; // angular acceleration
 	long lastPosUpdate;
 
-	RMS vresRMS = new RMS(30);
+	RMS vresRMS = new RMS(200);
 	RMS vangRMS = new RMS(20);
 
 	LinkedList<Float> vangAverage = new LinkedList<Float>();
