@@ -143,6 +143,10 @@ public class MainActivity extends Activity implements SensorEventListener,
 		button = (Button) findViewById(R.id.record_button);
 		button.setBackgroundColor(Color.WHITE);
 		button.setOnClickListener(this);
+		
+		Button playButton = (Button) findViewById(R.id.play_button);
+		playButton.setBackgroundColor(Color.GREEN);
+		playButton.setOnClickListener(this);
 
 		Display display = getWindowManager().getDefaultDisplay();
 		Point size = new Point();
@@ -319,9 +323,10 @@ public class MainActivity extends Activity implements SensorEventListener,
 
 	@Override
 	public void onClick(View v) {
+		Button button;
 		switch (v.getId()) {
 		case R.id.record_button:
-			Button button = (Button) v;
+			button = (Button) v;
 			if (recording) {
 				PdBase.sendSymbol("record", "stop");
 				button.setText(R.string.record_start);
@@ -359,6 +364,8 @@ public class MainActivity extends Activity implements SensorEventListener,
 			}
 			recording = !recording;
 			break;
+		case R.id.play_button:
+			PdBase.sendBang("play");
 		default:
 			break;
 		}

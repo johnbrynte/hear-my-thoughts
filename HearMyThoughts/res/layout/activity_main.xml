@@ -13,10 +13,24 @@
 	    
     </FrameLayout>
     
-	    <Button
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" >
+        
+        <Button
 	        android:id="@+id/record_button"
-	        android:layout_width="match_parent"
+	        android:layout_width="wrap_content"
 	        android:layout_height="wrap_content"
+	        android:layout_weight="1.0"
 	        android:text="@string/record_start" />
+    
+	    <Button
+	        android:id="@+id/play_button"
+	        android:layout_width="wrap_content"
+	        android:layout_height="wrap_content"
+	        android:layout_weight="1.0"
+	        android:text="@string/play" />
+	    
+    </LinearLayout>
 
 </LinearLayout>
