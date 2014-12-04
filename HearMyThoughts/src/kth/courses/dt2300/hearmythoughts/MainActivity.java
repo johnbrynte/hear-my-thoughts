@@ -67,7 +67,7 @@ public class MainActivity extends Activity implements SensorEventListener,
 	float aang; // angular acceleration
 	long lastPosUpdate;
 
-	RMS vresRMS = new RMS(200);
+	RMS vresRMS = new RMS(60);
 	RMS vangRMS = new RMS(20);
 
 	LinkedList<Float> vangAverage = new LinkedList<Float>();
@@ -140,13 +140,13 @@ public class MainActivity extends Activity implements SensorEventListener,
 		canvas = new ScreenCanvas(this);
 		container.addView(canvas);
 
-		button = (Button) findViewById(R.id.record_button);
+		/*button = (Button) findViewById(R.id.record_button);
 		button.setBackgroundColor(Color.WHITE);
 		button.setOnClickListener(this);
 		
 		Button playButton = (Button) findViewById(R.id.play_button);
 		playButton.setBackgroundColor(Color.GREEN);
-		playButton.setOnClickListener(this);
+		playButton.setOnClickListener(this);*/
 
 		Display display = getWindowManager().getDefaultDisplay();
 		Point size = new Point();
@@ -323,6 +323,7 @@ public class MainActivity extends Activity implements SensorEventListener,
 
 	@Override
 	public void onClick(View v) {
+		/*
 		Button button;
 		switch (v.getId()) {
 		case R.id.record_button:
@@ -369,6 +370,7 @@ public class MainActivity extends Activity implements SensorEventListener,
 		default:
 			break;
 		}
+		*/
 	}
 
 	@Override
@@ -447,5 +449,10 @@ public class MainActivity extends Activity implements SensorEventListener,
 				e.printStackTrace();
 			}
 		}
+	}
+	
+	@Override
+	public void onBackPressed() {
+		
 	}
 }
